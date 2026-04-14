@@ -138,6 +138,20 @@ class TestProjectXAuthFlow(unittest.TestCase):
         self.assertEqual(client.captured_payload["stopLossBracket"], {"ticks": 10, "type": 1})
         self.assertEqual(client.captured_payload["takeProfitBracket"], {"ticks": 20, "type": 1})
 
+    def test_post_includes_authorization_header_when_token_exists(self) -> None:
+        class _HeaderCaptureClient(ProjectXClient):
+            def __init__(self) -> None:
+                super().__init__(ProjectXConfig(token="seed_token"))
+                self.last_headers = {}
+
+            def _request(self, path, payload, headers):  # type: ignore[override]
+                self.last_headers = headers
+                return {"success": True, "value": "ok"}
+
+        client = _HeaderCaptureClient()
+        client._post("/api/Test/endpoint", {"x": 1}, include_auth=False)
+        self.assertEqual(client.last_headers.get("Authorization"), "Bearer seed_token")
+
 
 if __name__ == "__main__":
     unittest.main()

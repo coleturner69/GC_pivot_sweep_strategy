@@ -235,7 +235,7 @@ class ProjectXClient:
             self.authenticate()
 
         headers = {"accept": "text/plain", "Content-Type": "application/json"}
-        if include_auth and self._token:
+        if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
 
         try:
