@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import requests
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 
 class ProjectXApiError(RuntimeError):
@@ -50,7 +51,6 @@ class ProjectXConfig:
 class ProjectXClient:
     def __init__(self, config: ProjectXConfig):
         self.config = config
-        self._session = requests.Session()
         self._token: Optional[str] = None
 
     def authenticate(self) -> str:
@@ -133,7 +133,6 @@ class ProjectXClient:
             raise ProjectXApiError("Order placed but orderId missing.")
         return int(order_id)
 
-
     def find_contracts(self, symbol_contains: str, live: Optional[bool] = None) -> List[Dict[str, Any]]:
         symbol_contains = symbol_contains.lower().strip()
         contracts = self.list_available_contracts(live=live)
@@ -172,26 +171,38 @@ class ProjectXClient:
         if include_auth and not self._token:
             self.authenticate()
 
-        url = f"{self.config.api_base_url}{path}"
         headers = {"accept": "text/plain", "Content-Type": "application/json"}
         if include_auth and self._token:
             headers["Authorization"] = f"Bearer {self._token}"
 
-        response = self._session.post(url, json=payload, headers=headers, timeout=self.config.timeout_sec)
-        if response.status_code == 401 and include_auth:
-            self.validate_session()
-            headers["Authorization"] = f"Bearer {self._token}"
-            response = self._session.post(url, json=payload, headers=headers, timeout=self.config.timeout_sec)
+        try:
+            data = self._request(path=path, payload=payload, headers=headers)
+        except ProjectXApiError as exc:
+            if include_auth and "HTTP 401" in str(exc):
+                self.validate_session()
+                headers["Authorization"] = f"Bearer {self._token}"
+                data = self._request(path=path, payload=payload, headers=headers)
+            else:
+                raise
 
-        if response.status_code >= 400:
-            raise ProjectXApiError(f"HTTP {response.status_code}: {response.text}")
-
-        data = response.json()
         if not data.get("success", False):
-            raise ProjectXApiError(
-                f"API error {data.get('errorCode')}: {data.get('errorMessage')}"
-            )
+            raise ProjectXApiError(f"API error {data.get('errorCode')}: {data.get('errorMessage')}")
         return data
+
+    def _request(self, path: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
+        url = f"{self.config.api_base_url}{path}"
+        body = json.dumps(payload).encode("utf-8")
+        request = Request(url=url, data=body, headers=headers, method="POST")
+
+        try:
+            with urlopen(request, timeout=self.config.timeout_sec) as response:
+                raw = response.read().decode("utf-8")
+                return json.loads(raw)
+        except HTTPError as exc:
+            msg = exc.read().decode("utf-8", errors="replace")
+            raise ProjectXApiError(f"HTTP {exc.code}: {msg}") from exc
+        except URLError as exc:
+            raise ProjectXApiError(f"Network error: {exc}") from exc
 
 
 def _read_env_file(env_file: Optional[str]) -> Dict[str, str]:
