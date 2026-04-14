@@ -22,7 +22,7 @@ PROJECTX_ACCOUNT_ID=12345
 PROJECTX_CONTRACT_ID=CON.F.US.MGC.M26
 ```
 
-All ProjectX CLIs accept `--env-file` (default `.projectx.env`).
+All ProjectX CLIs now accept `--env-file` (default `.projectx.env`).
 
 ## Setup
 
