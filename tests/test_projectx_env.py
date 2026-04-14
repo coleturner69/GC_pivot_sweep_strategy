@@ -93,6 +93,20 @@ PROJECTX_CONTRACT_ID=CON.F.US.MGC.M26
         self.assertEqual(config.token, "tok_123")
         self.assertEqual(config.account_id, 42)
         self.assertEqual(config.contract_id, "CON.F.US.MGC.M26")
+        self.assertEqual(config.api_base_url, "https://api.topstepx.com")
+        os.unlink(path)
+
+    def test_from_env_normalizes_api_base_url_trailing_slash(self) -> None:
+        content = """
+PROJECTX_TOKEN=tok_123
+PROJECTX_API_BASE_URL=https://api.topstepx.com/
+""".strip()
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write(content)
+            path = f.name
+
+        config = ProjectXConfig.from_env(path)
+        self.assertEqual(config.api_base_url, "https://api.topstepx.com")
         os.unlink(path)
 
     def test_from_env_rejects_placeholder_values(self) -> None:
