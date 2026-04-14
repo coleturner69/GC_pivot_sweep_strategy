@@ -45,6 +45,36 @@ class TestProjectXAuthFlow(unittest.TestCase):
         with self.assertRaises(ProjectXApiError):
             client.validate_session()
 
+    def test_post_reauth_falls_back_to_login_when_validate_401s(self) -> None:
+        class _ValidateThenLoginClient(ProjectXClient):
+            def __init__(self) -> None:
+                super().__init__(ProjectXConfig(username="user", api_key="key", token="seed_token"))
+                self.calls: list[str] = []
+                self.order_request_count = 0
+
+            def _request(self, path, payload, headers):  # type: ignore[override]
+                self.calls.append(path)
+                if path == "/api/Test/endpoint":
+                    self.order_request_count += 1
+                    if self.order_request_count == 1:
+                        raise ProjectXApiError("HTTP 401: expired")
+                    return {"success": True, "value": "ok"}
+                if path == "/api/Auth/validate":
+                    raise ProjectXApiError("HTTP 401: expired")
+                if path == "/api/Auth/loginKey":
+                    return {"success": True, "token": "fresh_login_token"}
+                raise AssertionError(f"Unexpected path {path}")
+
+        client = _ValidateThenLoginClient()
+        result = client._post("/api/Test/endpoint", {"x": 1})
+
+        self.assertEqual(result["value"], "ok")
+        self.assertEqual(client._token, "fresh_login_token")
+        self.assertEqual(
+            client.calls,
+            ["/api/Test/endpoint", "/api/Auth/validate", "/api/Auth/loginKey", "/api/Test/endpoint"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

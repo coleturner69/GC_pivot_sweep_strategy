@@ -17,7 +17,7 @@ PROJECTX_API_KEY=your_api_key
 
 # Common settings
 PROJECTX_LIVE=false
-PROJECTX_API_BASE_URL=https://api.thefuturesdesk.projectx.com
+PROJECTX_API_BASE_URL=https://api.topstepx.com
 PROJECTX_ACCOUNT_ID=12345
 PROJECTX_CONTRACT_ID=CON.F.US.MGC.M26
 ```

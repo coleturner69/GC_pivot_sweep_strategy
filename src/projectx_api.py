@@ -21,7 +21,7 @@ class ProjectXConfig:
     token: str = ""
     account_id: Optional[int] = None
     contract_id: Optional[str] = None
-    api_base_url: str = "https://api.thefuturesdesk.projectx.com"
+    api_base_url: str = "https://api.topstepx.com"
     live: bool = False
     timeout_sec: int = 20
     verbose: bool = False
@@ -53,7 +53,7 @@ class ProjectXConfig:
         api_base_url = (
             os.getenv("PROJECTX_API_BASE_URL")
             or file_values.get("PROJECTX_API_BASE_URL")
-            or "https://api.thefuturesdesk.projectx.com"
+            or "https://api.topstepx.com"
         )
         live_raw = os.getenv("PROJECTX_LIVE") or file_values.get("PROJECTX_LIVE") or "false"
         timeout_raw = os.getenv("PROJECTX_TIMEOUT_SEC") or file_values.get("PROJECTX_TIMEOUT_SEC") or "20"
@@ -68,7 +68,7 @@ class ProjectXConfig:
             token=token,
             account_id=int(account_raw) if account_raw else None,
             contract_id=contract_id or None,
-            api_base_url=api_base_url,
+            api_base_url=api_base_url.rstrip("/"),
             live=str(live_raw).lower() == "true",
             timeout_sec=int(timeout_raw),
             verbose=str(verbose_raw).lower() == "true",
@@ -79,6 +79,7 @@ class ProjectXClient:
     def __init__(self, config: ProjectXConfig):
         self.config = config
         self._token: Optional[str] = config.token or None
+        self._is_validating_session = False
 
     def authenticate(self) -> str:
         if self._token:
@@ -96,19 +97,23 @@ class ProjectXClient:
         if not self._token:
             raise ProjectXApiError("Cannot validate session without an existing token.")
 
+        self._is_validating_session = True
         headers = {
             "accept": "text/plain",
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._token}",
         }
-        data = self._request(path="/api/Auth/validate", payload={}, headers=headers)
-        if not data.get("success", False):
-            raise ProjectXApiError(f"API error {data.get('errorCode')}: {data.get('errorMessage')}")
-        new_token = data.get("newToken")
-        if not new_token:
-            raise ProjectXApiError("Validate session succeeded but newToken was missing.")
-        self._token = new_token
-        return new_token
+        try:
+            data = self._request(path="/api/Auth/validate", payload={}, headers=headers)
+            if not data.get("success", False):
+                raise ProjectXApiError(f"API error {data.get('errorCode')}: {data.get('errorMessage')}")
+            new_token = data.get("newToken")
+            if not new_token:
+                raise ProjectXApiError("Validate session succeeded but newToken was missing.")
+            self._token = new_token
+            return new_token
+        finally:
+            self._is_validating_session = False
 
     def search_accounts(self, only_active_accounts: bool = True) -> List[Dict[str, Any]]:
         data = self._post("/api/Account/search", {"onlyActiveAccounts": only_active_accounts})
@@ -229,7 +234,7 @@ class ProjectXClient:
         except ProjectXApiError as exc:
             should_reauth = include_auth and allow_reauth and path != "/api/Auth/validate" and "HTTP 401" in str(exc)
             if should_reauth:
-                self.validate_session()
+                self._refresh_session_after_401()
                 headers["Authorization"] = f"Bearer {self._token}"
                 data = self._request(path=path, payload=payload, headers=headers)
             else:
@@ -239,8 +244,23 @@ class ProjectXClient:
             raise ProjectXApiError(f"API error {data.get('errorCode')}: {data.get('errorMessage')}")
         return data
 
+    def _refresh_session_after_401(self) -> None:
+        if self._is_validating_session:
+            raise ProjectXApiError("Session refresh loop detected while validating token.")
+
+        if self._token:
+            try:
+                self.validate_session()
+                return
+            except ProjectXApiError as exc:
+                if "HTTP 401" not in str(exc):
+                    raise
+
+        self._token = None
+        self.authenticate()
+
     def _request(self, path: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
-        url = f"{self.config.api_base_url}{path}"
+        url = f"{self.config.api_base_url.rstrip('/')}/{path.lstrip('/')}"
         body = json.dumps(payload).encode("utf-8")
         request = Request(url=url, data=body, headers=headers, method="POST")
 
