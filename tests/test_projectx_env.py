@@ -79,5 +79,18 @@ PROJECTX_LIVE=false
         os.unlink(path)
 
 
+    def test_from_env_rejects_placeholder_values(self) -> None:
+        content = """
+PROJECTX_USERNAME=your_username
+PROJECTX_API_KEY=your_api_key
+""".strip()
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write(content)
+            path = f.name
+
+        with self.assertRaises(ValueError):
+            ProjectXConfig.from_env(path)
+        os.unlink(path)
+
 if __name__ == "__main__":
     unittest.main()

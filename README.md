@@ -26,6 +26,16 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Credential troubleshooting
+
+If account lookup says credentials are missing, run:
+
+```bash
+python -m src.projectx_check_env --env-file .projectx.env
+```
+
+This prints whether username/API key were parsed and if they are empty placeholders.
+
 ## Get your Account ID
 
 ```bash

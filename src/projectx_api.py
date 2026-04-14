@@ -26,14 +26,19 @@ class ProjectXConfig:
     def from_env(cls, env_file: Optional[str] = None) -> "ProjectXConfig":
         file_values = _read_env_file(env_file)
 
-        username = os.getenv("PROJECTX_USERNAME") or file_values.get("PROJECTX_USERNAME")
-        api_key = os.getenv("PROJECTX_API_KEY") or file_values.get("PROJECTX_API_KEY")
+        username = (os.getenv("PROJECTX_USERNAME") or file_values.get("PROJECTX_USERNAME") or "").strip()
+        api_key = (os.getenv("PROJECTX_API_KEY") or file_values.get("PROJECTX_API_KEY") or "").strip()
         if not username or not api_key:
             file_note = f" env_file={env_file!r}" if env_file else ""
             found = ",".join(sorted(file_values.keys())) if file_values else "<none>"
             raise ValueError(
                 "Missing credentials. Set PROJECTX_USERNAME and PROJECTX_API_KEY in env vars or env file."
                 f"{file_note}; parsed_keys={found}"
+            )
+
+        if username.lower() in {"your_username", "username"} or api_key.lower() in {"your_api_key", "api_key"}:
+            raise ValueError(
+                "Credentials still look like placeholders. Replace PROJECTX_USERNAME/PROJECTX_API_KEY with real values."
             )
 
         api_base_url = (
