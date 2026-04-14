@@ -21,7 +21,7 @@ class ProjectXConfig:
     token: str = ""
     account_id: Optional[int] = None
     contract_id: Optional[str] = None
-    api_base_url: str = "https://api.thefuturesdesk.projectx.com"
+    api_base_url: str = "https://api.topstepx.com"
     live: bool = False
     timeout_sec: int = 20
     verbose: bool = False
@@ -53,7 +53,7 @@ class ProjectXConfig:
         api_base_url = (
             os.getenv("PROJECTX_API_BASE_URL")
             or file_values.get("PROJECTX_API_BASE_URL")
-            or "https://api.thefuturesdesk.projectx.com"
+            or "https://api.topstepx.com"
         )
         live_raw = os.getenv("PROJECTX_LIVE") or file_values.get("PROJECTX_LIVE") or "false"
         timeout_raw = os.getenv("PROJECTX_TIMEOUT_SEC") or file_values.get("PROJECTX_TIMEOUT_SEC") or "20"
@@ -68,7 +68,7 @@ class ProjectXConfig:
             token=token,
             account_id=int(account_raw) if account_raw else None,
             contract_id=contract_id or None,
-            api_base_url=api_base_url,
+            api_base_url=api_base_url.rstrip("/"),
             live=str(live_raw).lower() == "true",
             timeout_sec=int(timeout_raw),
             verbose=str(verbose_raw).lower() == "true",
@@ -260,7 +260,7 @@ class ProjectXClient:
         self.authenticate()
 
     def _request(self, path: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
-        url = f"{self.config.api_base_url}{path}"
+        url = f"{self.config.api_base_url.rstrip('/')}/{path.lstrip('/')}"
         body = json.dumps(payload).encode("utf-8")
         request = Request(url=url, data=body, headers=headers, method="POST")
 
