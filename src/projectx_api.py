@@ -24,6 +24,7 @@ class ProjectXConfig:
     api_base_url: str = "https://api.thefuturesdesk.projectx.com"
     live: bool = False
     timeout_sec: int = 20
+    verbose: bool = False
 
     @classmethod
     def from_env(cls, env_file: Optional[str] = None) -> "ProjectXConfig":
@@ -55,6 +56,8 @@ class ProjectXConfig:
             or "https://api.thefuturesdesk.projectx.com"
         )
         live_raw = os.getenv("PROJECTX_LIVE") or file_values.get("PROJECTX_LIVE") or "false"
+        timeout_raw = os.getenv("PROJECTX_TIMEOUT_SEC") or file_values.get("PROJECTX_TIMEOUT_SEC") or "20"
+        verbose_raw = os.getenv("PROJECTX_DEBUG") or file_values.get("PROJECTX_DEBUG") or "false"
 
         account_raw = (os.getenv("PROJECTX_ACCOUNT_ID") or file_values.get("PROJECTX_ACCOUNT_ID") or "").strip()
         contract_id = (os.getenv("PROJECTX_CONTRACT_ID") or file_values.get("PROJECTX_CONTRACT_ID") or "").strip()
@@ -67,6 +70,8 @@ class ProjectXConfig:
             contract_id=contract_id or None,
             api_base_url=api_base_url,
             live=str(live_raw).lower() == "true",
+            timeout_sec=int(timeout_raw),
+            verbose=str(verbose_raw).lower() == "true",
         )
 
 
@@ -88,7 +93,17 @@ class ProjectXClient:
         return token
 
     def validate_session(self) -> str:
-        data = self._post("/api/Auth/validate", {})
+        if not self._token:
+            raise ProjectXApiError("Cannot validate session without an existing token.")
+
+        headers = {
+            "accept": "text/plain",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self._token}",
+        }
+        data = self._request(path="/api/Auth/validate", payload={}, headers=headers)
+        if not data.get("success", False):
+            raise ProjectXApiError(f"API error {data.get('errorCode')}: {data.get('errorMessage')}")
         new_token = data.get("newToken")
         if not new_token:
             raise ProjectXApiError("Validate session succeeded but newToken was missing.")
@@ -195,7 +210,13 @@ class ProjectXClient:
             raise ProjectXApiError("Matched contract is missing id field.")
         return str(selected_id)
 
-    def _post(self, path: str, payload: Dict[str, Any], include_auth: bool = True) -> Dict[str, Any]:
+    def _post(
+        self,
+        path: str,
+        payload: Dict[str, Any],
+        include_auth: bool = True,
+        allow_reauth: bool = True,
+    ) -> Dict[str, Any]:
         if include_auth and not self._token:
             self.authenticate()
 
@@ -206,7 +227,8 @@ class ProjectXClient:
         try:
             data = self._request(path=path, payload=payload, headers=headers)
         except ProjectXApiError as exc:
-            if include_auth and "HTTP 401" in str(exc):
+            should_reauth = include_auth and allow_reauth and path != "/api/Auth/validate" and "HTTP 401" in str(exc)
+            if should_reauth:
                 self.validate_session()
                 headers["Authorization"] = f"Bearer {self._token}"
                 data = self._request(path=path, payload=payload, headers=headers)
@@ -221,6 +243,9 @@ class ProjectXClient:
         url = f"{self.config.api_base_url}{path}"
         body = json.dumps(payload).encode("utf-8")
         request = Request(url=url, data=body, headers=headers, method="POST")
+
+        if self.config.verbose:
+            print(f"[ProjectX] POST {url}")
 
         try:
             with urlopen(request, timeout=self.config.timeout_sec) as response:
