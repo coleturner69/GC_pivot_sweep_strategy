@@ -85,6 +85,11 @@ class ProjectXClient:
         if self._token:
             return self._token
 
+        if not self.config.username or not self.config.api_key:
+            raise ProjectXApiError(
+                "Cannot authenticate via /api/Auth/loginKey without PROJECTX_USERNAME and PROJECTX_API_KEY."
+            )
+
         payload = {"userName": self.config.username, "apiKey": self.config.api_key}
         data = self._post("/api/Auth/loginKey", payload, include_auth=False)
         token = data.get("token")
@@ -234,17 +239,18 @@ class ProjectXClient:
         except ProjectXApiError as exc:
             should_reauth = include_auth and allow_reauth and path != "/api/Auth/validate" and "HTTP 401" in str(exc)
             if should_reauth:
-                self._refresh_session_after_401()
+                self._refresh_session_after_401(original_exc=exc)
                 headers["Authorization"] = f"Bearer {self._token}"
                 data = self._request(path=path, payload=payload, headers=headers)
             else:
                 raise
 
         if not data.get("success", False):
-            raise ProjectXApiError(f"API error {data.get('errorCode')}: {data.get('errorMessage')}")
+            error_message = data.get("errorMessage") or "No errorMessage returned by API."
+            raise ProjectXApiError(f"API error {data.get('errorCode')}: {error_message}")
         return data
 
-    def _refresh_session_after_401(self) -> None:
+    def _refresh_session_after_401(self, original_exc: Optional[ProjectXApiError] = None) -> None:
         if self._is_validating_session:
             raise ProjectXApiError("Session refresh loop detected while validating token.")
 
@@ -255,6 +261,11 @@ class ProjectXClient:
             except ProjectXApiError as exc:
                 if "HTTP 401" not in str(exc):
                     raise
+                if not self.config.username or not self.config.api_key:
+                    raise ProjectXApiError(
+                        "Token rejected with HTTP 401 and no loginKey credentials configured. "
+                        "Set PROJECTX_USERNAME + PROJECTX_API_KEY or provide a fresh PROJECTX_TOKEN."
+                    ) from exc
 
         self._token = None
         self.authenticate()

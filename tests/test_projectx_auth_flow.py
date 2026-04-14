@@ -75,6 +75,33 @@ class TestProjectXAuthFlow(unittest.TestCase):
             ["/api/Test/endpoint", "/api/Auth/validate", "/api/Auth/loginKey", "/api/Test/endpoint"],
         )
 
+    def test_post_401_with_token_only_raises_clear_error_without_login_call(self) -> None:
+        class _TokenOnlyClient(ProjectXClient):
+            def __init__(self) -> None:
+                super().__init__(ProjectXConfig(token="seed_token"))
+                self.calls: list[str] = []
+
+            def _request(self, path, payload, headers):  # type: ignore[override]
+                self.calls.append(path)
+                if path == "/api/Test/endpoint":
+                    raise ProjectXApiError("HTTP 401: expired")
+                if path == "/api/Auth/validate":
+                    raise ProjectXApiError("HTTP 401: expired")
+                raise AssertionError(f"Unexpected path {path}")
+
+        client = _TokenOnlyClient()
+        with self.assertRaises(ProjectXApiError) as ctx:
+            client._post("/api/Test/endpoint", {"x": 1})
+
+        self.assertIn("no loginKey credentials configured", str(ctx.exception))
+        self.assertEqual(client.calls, ["/api/Test/endpoint", "/api/Auth/validate"])
+
+    def test_authenticate_requires_username_and_api_key(self) -> None:
+        client = ProjectXClient(ProjectXConfig())
+        with self.assertRaises(ProjectXApiError) as ctx:
+            client.authenticate()
+        self.assertIn("without PROJECTX_USERNAME and PROJECTX_API_KEY", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
