@@ -29,8 +29,11 @@ class ProjectXConfig:
         username = os.getenv("PROJECTX_USERNAME") or file_values.get("PROJECTX_USERNAME")
         api_key = os.getenv("PROJECTX_API_KEY") or file_values.get("PROJECTX_API_KEY")
         if not username or not api_key:
+            file_note = f" env_file={env_file!r}" if env_file else ""
+            found = ",".join(sorted(file_values.keys())) if file_values else "<none>"
             raise ValueError(
-                "Missing credentials. Set PROJECTX_USERNAME and PROJECTX_API_KEY in env vars or an env file."
+                "Missing credentials. Set PROJECTX_USERNAME and PROJECTX_API_KEY in env vars or env file."
+                f"{file_note}; parsed_keys={found}"
             )
 
         api_base_url = (
@@ -209,20 +212,35 @@ def _read_env_file(env_file: Optional[str]) -> Dict[str, str]:
     if not env_file:
         return {}
 
-    path = Path(env_file)
+    path = Path(env_file).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
     if not path.exists():
         return {}
 
     values: Dict[str, str] = {}
-    for raw in path.read_text().splitlines():
+    for raw in path.read_text(encoding="utf-8-sig").splitlines():
         line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
             continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            continue
+
         k, v = line.split("=", 1)
-        values[k.strip()] = v.strip().strip("\"'")
+        key = k.strip()
+        value = v.strip()
+
+        if not key:
+            continue
+
+        if " #" in value:
+            value = value.split(" #", 1)[0].strip()
+        value = value.strip("\"'")
+        values[key] = value
+
     return values
-
-
 def _to_utc_iso(ts: datetime) -> str:
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)

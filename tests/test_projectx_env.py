@@ -27,6 +27,20 @@ PROJECTX_LIVE=true
 
         os.unlink(path)
 
+    def test_read_env_file_supports_export_prefix_and_inline_comment(self) -> None:
+        content = """
+export PROJECTX_USERNAME = bob
+export PROJECTX_API_KEY = xyz789 # inline comment
+""".strip()
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write(content)
+            path = f.name
+
+        values = _read_env_file(path)
+        self.assertEqual(values["PROJECTX_USERNAME"], "bob")
+        self.assertEqual(values["PROJECTX_API_KEY"], "xyz789")
+        os.unlink(path)
+
     def test_from_env_prefers_os_env_over_file(self) -> None:
         content = """
 PROJECTX_USERNAME=file_user
