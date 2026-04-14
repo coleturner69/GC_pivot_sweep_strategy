@@ -79,6 +79,22 @@ PROJECTX_LIVE=false
         os.unlink(path)
 
 
+    def test_from_env_accepts_token_only(self) -> None:
+        content = """
+PROJECTX_TOKEN=tok_123
+PROJECTX_ACCOUNT_ID=42
+PROJECTX_CONTRACT_ID=CON.F.US.MGC.M26
+""".strip()
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write(content)
+            path = f.name
+
+        config = ProjectXConfig.from_env(path)
+        self.assertEqual(config.token, "tok_123")
+        self.assertEqual(config.account_id, 42)
+        self.assertEqual(config.contract_id, "CON.F.US.MGC.M26")
+        os.unlink(path)
+
     def test_from_env_rejects_placeholder_values(self) -> None:
         content = """
 PROJECTX_USERNAME=your_username

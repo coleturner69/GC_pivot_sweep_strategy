@@ -16,8 +16,11 @@ class ProjectXApiError(RuntimeError):
 
 @dataclass
 class ProjectXConfig:
-    username: str
-    api_key: str
+    username: str = ""
+    api_key: str = ""
+    token: str = ""
+    account_id: Optional[int] = None
+    contract_id: Optional[str] = None
     api_base_url: str = "https://api.thefuturesdesk.projectx.com"
     live: bool = False
     timeout_sec: int = 20
@@ -28,11 +31,13 @@ class ProjectXConfig:
 
         username = (os.getenv("PROJECTX_USERNAME") or file_values.get("PROJECTX_USERNAME") or "").strip()
         api_key = (os.getenv("PROJECTX_API_KEY") or file_values.get("PROJECTX_API_KEY") or "").strip()
-        if not username or not api_key:
+        token = (os.getenv("PROJECTX_TOKEN") or file_values.get("PROJECTX_TOKEN") or "").strip()
+
+        if not token and (not username or not api_key):
             file_note = f" env_file={env_file!r}" if env_file else ""
             found = ",".join(sorted(file_values.keys())) if file_values else "<none>"
             raise ValueError(
-                "Missing credentials. Set PROJECTX_USERNAME and PROJECTX_API_KEY in env vars or env file."
+                "Missing credentials. Provide PROJECTX_TOKEN or PROJECTX_USERNAME + PROJECTX_API_KEY."
                 f"{file_note}; parsed_keys={found}"
             )
 
@@ -41,6 +46,9 @@ class ProjectXConfig:
                 "Credentials still look like placeholders. Replace PROJECTX_USERNAME/PROJECTX_API_KEY with real values."
             )
 
+        if token.lower() in {"your_token", "token"}:
+            raise ValueError("PROJECTX_TOKEN looks like a placeholder; replace with a real token.")
+
         api_base_url = (
             os.getenv("PROJECTX_API_BASE_URL")
             or file_values.get("PROJECTX_API_BASE_URL")
@@ -48,9 +56,15 @@ class ProjectXConfig:
         )
         live_raw = os.getenv("PROJECTX_LIVE") or file_values.get("PROJECTX_LIVE") or "false"
 
+        account_raw = (os.getenv("PROJECTX_ACCOUNT_ID") or file_values.get("PROJECTX_ACCOUNT_ID") or "").strip()
+        contract_id = (os.getenv("PROJECTX_CONTRACT_ID") or file_values.get("PROJECTX_CONTRACT_ID") or "").strip()
+
         return cls(
             username=username,
             api_key=api_key,
+            token=token,
+            account_id=int(account_raw) if account_raw else None,
+            contract_id=contract_id or None,
             api_base_url=api_base_url,
             live=str(live_raw).lower() == "true",
         )
@@ -59,9 +73,12 @@ class ProjectXConfig:
 class ProjectXClient:
     def __init__(self, config: ProjectXConfig):
         self.config = config
-        self._token: Optional[str] = None
+        self._token: Optional[str] = config.token or None
 
     def authenticate(self) -> str:
+        if self._token:
+            return self._token
+
         payload = {"userName": self.config.username, "apiKey": self.config.api_key}
         data = self._post("/api/Auth/loginKey", payload, include_auth=False)
         token = data.get("token")
@@ -154,6 +171,9 @@ class ProjectXClient:
     def resolve_contract_id(self, contract_id: Optional[str] = None, symbol_hint: str = "MGC") -> str:
         if contract_id:
             return str(contract_id)
+
+        if self.config.contract_id:
+            return self.config.contract_id
 
         env_id = os.getenv("PROJECTX_MICRO_GOLD_CONTRACT_ID")
         if env_id:

@@ -14,7 +14,7 @@ from .strategy import load_ohlcv_csv, run_backtest
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="ProjectX live/paper runner for GC pivot sweep strategy.")
     p.add_argument("--contract-id", required=False)
-    p.add_argument("--account-id", required=True, type=int)
+    p.add_argument("--account-id", required=False, type=int, help="Overrides PROJECTX_ACCOUNT_ID")
     p.add_argument("--size", default=1, type=int)
     p.add_argument("--poll-seconds", default=20, type=int)
     p.add_argument("--lookback-minutes", default=1800, type=int)
@@ -26,7 +26,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    client = ProjectXClient(ProjectXConfig.from_env(args.env_file))
+    config = ProjectXConfig.from_env(args.env_file)
+    client = ProjectXClient(config)
+
+    account_id = args.account_id or config.account_id
+    if account_id is None:
+        raise ValueError("Provide --account-id or set PROJECTX_ACCOUNT_ID in env file.")
 
     placed_entries = _load_state(Path(args.state_file))
 
@@ -65,7 +70,7 @@ def main() -> None:
                         print(f"[DRY RUN] {msg}")
                     else:
                         order_id = client.place_market_order(
-                            account_id=args.account_id,
+                            account_id=account_id,
                             contract_id=contract_id,
                             side=side,
                             size=args.size,
