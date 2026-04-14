@@ -102,6 +102,42 @@ class TestProjectXAuthFlow(unittest.TestCase):
             client.authenticate()
         self.assertIn("without PROJECTX_USERNAME and PROJECTX_API_KEY", str(ctx.exception))
 
+    def test_place_market_order_payload_matches_api_shape(self) -> None:
+        class _CaptureOrderClient(ProjectXClient):
+            def __init__(self) -> None:
+                super().__init__(ProjectXConfig(token="seed_token"))
+                self.captured_path = ""
+                self.captured_payload = {}
+
+            def _post(self, path, payload, include_auth=True, allow_reauth=True):  # type: ignore[override]
+                self.captured_path = path
+                self.captured_payload = payload
+                return {"success": True, "orderId": 101}
+
+        client = _CaptureOrderClient()
+        order_id = client.place_market_order(
+            account_id=465,
+            contract_id="CON.F.US.DA6.M25",
+            side="sell",
+            size=1,
+            stop_ticks=10,
+            take_profit_ticks=20,
+        )
+
+        self.assertEqual(order_id, 101)
+        self.assertEqual(client.captured_path, "/api/Order/place")
+        self.assertEqual(client.captured_payload["accountId"], 465)
+        self.assertEqual(client.captured_payload["contractId"], "CON.F.US.DA6.M25")
+        self.assertEqual(client.captured_payload["type"], 2)
+        self.assertEqual(client.captured_payload["side"], 1)
+        self.assertEqual(client.captured_payload["size"], 1)
+        self.assertIsNone(client.captured_payload["limitPrice"])
+        self.assertIsNone(client.captured_payload["stopPrice"])
+        self.assertIsNone(client.captured_payload["trailPrice"])
+        self.assertIsNone(client.captured_payload["customTag"])
+        self.assertEqual(client.captured_payload["stopLossBracket"], {"ticks": 10, "type": 1})
+        self.assertEqual(client.captured_payload["takeProfitBracket"], {"ticks": 20, "type": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

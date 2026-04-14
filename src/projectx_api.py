@@ -169,11 +169,15 @@ class ProjectXClient:
             "type": 2,
             "side": side_int,
             "size": size,
+            "limitPrice": None,
+            "stopPrice": None,
+            "trailPrice": None,
+            "customTag": None,
         }
         if custom_tag:
             payload["customTag"] = custom_tag
         if stop_ticks is not None:
-            payload["stopLossBracket"] = {"ticks": int(stop_ticks), "type": 4}
+            payload["stopLossBracket"] = {"ticks": int(stop_ticks), "type": 1}
         if take_profit_ticks is not None:
             payload["takeProfitBracket"] = {"ticks": int(take_profit_ticks), "type": 1}
 
